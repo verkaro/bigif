@@ -24,11 +24,11 @@ To add the BigIF engine to your project, use `go get`:
 
 ```
 
-go get [github.com/your-username/bigif](https://www.google.com/url?sa=E&source=gmail&q=https://github.com/your-username/bigif)
+go get [github.com/verkaro/bigif](https://www.google.com/url?sa=E&source=gmail&q=https://github.com/verkaro/bigif)
 
 ````
 
-*(Note: Replace `your-username` with the actual repository path once available.)*
+*(Note: Replace `verkaro` with the actual repository path once available.)*
 
 ### Usage Example
 
@@ -42,7 +42,7 @@ import (
 	"io/ioutil"
 	"log"
 
-	"[github.com/your-username/bigif](https://github.com/your-username/bigif)" // Import the engine package
+	"[github.com/verkaro/bigif](https://github.com/verkaro/bigif)" // Import the engine package
 )
 
 func main() {
