@@ -2,7 +2,7 @@
 
 BigIF is a headless logic pre-processor designed to parse a specialized scripting language (`.biff`) and compile it into a structured, navigable graph of story states. Its sole purpose is to handle the complex logic of a branching, stateful narrative, providing a clean API for other applications to consume, render, and use. It is presentation and application agnostic.
 
-This engine is the core component that can power applications like the [Sifgo](https://example.com/link-to-sifgo-repo) static site generator, interactive command-line games, training simulators, and more.
+This engine is the core component that can power applications like static site generators, interactive command-line games, training simulators, and more.
 
 ## Features
 
