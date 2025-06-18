@@ -24,11 +24,9 @@ To add the BigIF engine to your project, use `go get`:
 
 ```
 
-go get [github.com/verkaro/bigif](https://www.google.com/url?sa=E&source=gmail&q=https://github.com/verkaro/bigif)
+go get [github.com/verkaro/bigif](https://github.com/verkaro/bigif)
 
 ````
-
-*(Note: Replace `verkaro` with the actual repository path once available.)*
 
 ### Usage Example
 
