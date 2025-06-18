@@ -29,26 +29,20 @@ END
 	err = json.Unmarshal(outputJSON, &result)
 	require.NoError(t, err)
 
-	// Check metadata
 	metadata := result["metadata"].(map[string]interface{})
 	assert.Equal(t, "My Story", metadata["title"])
 
-	// Check graph nodes
-	graph := result["graph"].(map[string]interface{})
+	graphObj := result["graph"].(map[string]interface{})
+	nodes := graphObj["nodes"].(map[string]interface{})
 
-	// Should generate 3 reachable nodes
-	// 1. index, key=false
-	// 2. index, key=true
-	// 3. victory, key=true
-	assert.Len(t, graph, 3, "Should have exactly 3 reachable nodes")
+	assert.Len(t, nodes, 3, "Should have exactly 3 reachable nodes")
 
-	// Verify one of the nodes
-	node1 := graph["index|has_key=false"].(map[string]interface{})
+	node1 := nodes["index|has_key=false"].(map[string]interface{})
 	assert.Equal(t, "index", node1["knotName"])
 	assert.Equal(t, "The door is locked.", node1["content"])
 
 	edges := node1["edges"].([]interface{})
-	assert.Len(t, edges, 1) // Only one choice is available
+	assert.Len(t, edges, 1)
 	edge1 := edges[0].(map[string]interface{})
 	assert.Equal(t, "Look for a key.", edge1["text"])
 	assert.Equal(t, "index|has_key=true", edge1["targetNodeId"])
@@ -69,12 +63,14 @@ You did the thing.
 	require.NoError(t, err)
 
 	var result map[string]interface{}
-	json.Unmarshal(outputJSON, &result)
-	graph := result["graph"].(map[string]interface{})
+	err = json.Unmarshal(outputJSON, &result)
+	require.NoError(t, err)
+
+	graphObj := result["graph"].(map[string]interface{})
+	nodes := graphObj["nodes"].(map[string]interface{})
 	
-	// The edge from 'next' should lead to a state where major_event is STILL true
-	// because flags cannot be set to false.
-	nextNode := graph["next|major_event=true"].(map[string]interface{})
+	require.Contains(t, nodes, "next|major_event=true", "The 'next' node should exist in the graph")
+	nextNode := nodes["next|major_event=true"].(map[string]interface{})
 	edges := nextNode["edges"].([]interface{})
 	edge := edges[0].(map[string]interface{})
 	
@@ -85,6 +81,9 @@ func TestLocalState(t *testing.T) {
 	script := `
 // LOCAL-STATES: has_room_key
 // STATES: global_quest_active
+
+=== index ===
+* Enter the bedroom -> room1
 
 === room1 ===
 // scene: bedroom
@@ -99,16 +98,18 @@ func TestLocalState(t *testing.T) {
 	require.NoError(t, err)
 
 	var result map[string]interface{}
-	json.Unmarshal(outputJSON, &result)
-	graph := result["graph"].(map[string]interface{})
+	err = json.Unmarshal(outputJSON, &result)
+	require.NoError(t, err)
 
-	// From room1 with key, going to hallway
-	node1 := graph["room1|global_quest_active=false,has_room_key=true"].(map[string]interface{})
+	graphObj := result["graph"].(map[string]interface{})
+	nodes := graphObj["nodes"].(map[string]interface{})
+
+	require.Contains(t, nodes, "room1|global_quest_active=false,has_room_key=true")
+	node1 := nodes["room1|global_quest_active=false,has_room_key=true"].(map[string]interface{})
 	edgeToHallway := node1["edges"].([]interface{})[1].(map[string]interface{})
 	
-	// The target node in the hallway should not have has_room_key=true, it should be purged
 	expectedTargetID := "hallway|global_quest_active=false,has_room_key=false"
-	assert.Equal(t, expectedTargetID, edgeToHallway["targetNodeId"])
+	assert.Equal(t, expectedTargetID, edgeToHallway["targetNodeId"], "Local state should be purged when changing scenes")
 }
 
 func TestConditionalText(t *testing.T) {
@@ -123,14 +124,20 @@ func TestConditionalText(t *testing.T) {
 `
 	outputJSON, err := Compile(script)
 	require.NoError(t, err)
+
 	var result map[string]interface{}
-	json.Unmarshal(outputJSON, &result)
-	graph := result["graph"].(map[string]interface{})
+	err = json.Unmarshal(outputJSON, &result)
+	require.NoError(t, err)
 
-	darkNode := graph["index|power_on=false"].(map[string]interface{})
+	graphObj := result["graph"].(map[string]interface{})
+	nodes := graphObj["nodes"].(map[string]interface{})
+
+	require.Contains(t, nodes, "index|power_on=false")
+	darkNode := nodes["index|power_on=false"].(map[string]interface{})
 	assert.Equal(t, "The room is dark.\nIt is very spooky.", darkNode["content"])
-
-	lightNode := graph["index|power_on=true"].(map[string]interface{})
+	
+	require.Contains(t, nodes, "index|power_on=true")
+	lightNode := nodes["index|power_on=true"].(map[string]interface{})
 	assert.Equal(t, "The lights are on.", lightNode["content"])
 }
 
@@ -151,14 +158,16 @@ END
 `
 	outputJSON, err := Compile(script)
 	require.NoError(t, err)
-	var result map[string]interface{}
-	json.Unmarshal(outputJSON, &result)
-	graph := result["graph"].(map[string]interface{})
 
-	// The state `door|has_key=false` should NOT exist, because it's impossible to reach
-	// the door knot without having the key.
-	_, exists := graph["door|has_key=false"]
+	var result map[string]interface{}
+	err = json.Unmarshal(outputJSON, &result)
+	require.NoError(t, err)
+	
+	graphObj := result["graph"].(map[string]interface{})
+	nodes := graphObj["nodes"].(map[string]interface{})
+
+	_, exists := nodes["door|has_key=false"]
 	assert.False(t, exists, "An unreachable node was generated")
-	assert.Len(t, graph, 3, "Should only have 3 reachable nodes")
+	assert.Len(t, nodes, 3, "Should only have 3 reachable nodes")
 }
 

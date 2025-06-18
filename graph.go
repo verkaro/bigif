@@ -122,7 +122,7 @@ func generateNodeID(knotName string, state map[string]bool) string {
 	for k := range state {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	sort.Strings(keys) // Sort the keys to ensure deterministic order
 
 	var stateParts []string
 	for _, k := range keys {

@@ -44,10 +44,12 @@ func Compile(scriptContent string) ([]byte, error) {
 		return nil, fmt.Errorf("graph analysis error: %w", err)
 	}
 
-	// 3. Serialize the final graph to JSON
+	// 3. Serialize the final graph to JSON with the correct nested structure.
 	output := map[string]interface{}{
 		"metadata": ast.Metadata,
-		"graph":    graph.Graph, // Note: directly embedding the map
+		"graph": map[string]interface{}{
+			"nodes": graph.Graph,
+		},
 	}
 
 	return json.MarshalIndent(output, "", "  ")

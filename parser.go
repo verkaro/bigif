@@ -22,13 +22,17 @@ func parse(scriptContent string) (*Script, error) {
 		line := scanner.Text()
 		trimmedLine := strings.TrimSpace(line)
 
-		// End of a multi-paragraph block
+		// A blank line can be part of a multi-paragraph block, so only reset
+		// currentTextBlock when a new structural element is found.
 		if trimmedLine == "" {
-			currentTextBlock = nil
+			// If we are in a text block, treat the blank line as a paragraph break.
+			if currentTextBlock != nil {
+				currentTextBlock.Content += "\n"
+			}
 			continue
 		}
 
-		// Parse Header (Metadata and State Declarations)
+		// --- Header Parsing ---
 		if currentKnot == nil && strings.HasPrefix(trimmedLine, "//") {
 			headerLine := strings.TrimSpace(trimmedLine[2:])
 			parts := strings.SplitN(headerLine, ":", 2)
@@ -55,7 +59,7 @@ func parse(scriptContent string) (*Script, error) {
 			continue
 		}
 
-		// Parse Knot Declaration
+		// --- Knot Declaration ---
 		if strings.HasPrefix(trimmedLine, "===") && strings.HasSuffix(trimmedLine, "===") {
 			knotName := strings.TrimSpace(trimmedLine[3 : len(trimmedLine)-3])
 			if knotName == "" {
@@ -63,63 +67,58 @@ func parse(scriptContent string) (*Script, error) {
 			}
 			currentKnot = &Knot{Name: knotName}
 			script.Knots[knotName] = currentKnot
-			currentTextBlock = nil
+			currentTextBlock = nil // Reset for the new knot
 			continue
 		}
 
 		if currentKnot == nil {
-			continue // Still in header area, but not a recognized header line
+			continue // Skip lines before the first knot that aren't headers
 		}
 
-		// Parse lines within a Knot
+		// --- Knot Content Parsing ---
+
+		// Reset currentTextBlock pointer if a new structural element is found.
+		if strings.HasPrefix(trimmedLine, "*") || strings.HasPrefix(trimmedLine, "//") || trimmedLine == "END" {
+			currentTextBlock = nil
+		}
+		
 		switch {
-		// Knot-level comment or scene directive
+		// Comment or scene directive
 		case strings.HasPrefix(trimmedLine, "//"):
 			lineContent := strings.TrimSpace(trimmedLine[2:])
 			if parts := strings.SplitN(lineContent, ":", 2); len(parts) == 2 && strings.TrimSpace(parts[0]) == "scene" {
 				currentKnot.Scene = strings.TrimSpace(parts[1])
 			}
-			continue
-
-		// END keyword
+		// End of path
 		case trimmedLine == "END":
 			currentKnot.IsEnd = true
-			currentTextBlock = nil
-			continue
-
-		// Choice
+		// Choice line
 		case strings.HasPrefix(trimmedLine, "*"):
-			currentTextBlock = nil
 			choice, err := parseChoice(trimmedLine)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse choice '%s': %w", trimmedLine, err)
 			}
 			currentKnot.Choices = append(currentKnot.Choices, *choice)
-			continue
-
-		// Conditional Text Block
+		// Conditional text block
 		case strings.HasPrefix(trimmedLine, "-"):
 			block, err := parseTextBlock(trimmedLine)
 			if err != nil {
 				return nil, err
 			}
 			currentKnot.Body = append(currentKnot.Body, *block)
-			currentTextBlock = block
-			continue
-
-		// Indented line (part of a multi-paragraph text block)
-		case (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) && currentTextBlock != nil:
-			currentTextBlock.Content += "\n" + trimmedLine
-			continue
-
-		// Default: Unconditional, non-indented text
+			// Point to the actual copy in the slice
+			currentTextBlock = &currentKnot.Body[len(currentKnot.Body)-1]
+		// Default case for text content
 		default:
-			if currentKnot.Body == nil { // First line of body text
-				block := &TextBlock{Content: trimmedLine}
-				currentKnot.Body = append(currentKnot.Body, *block)
-				currentTextBlock = block
-			} else if currentTextBlock != nil { // Multi-line for a block that didn't use hyphens
+			if currentTextBlock != nil {
+				// This is a subsequent line of a multi-paragraph block.
 				currentTextBlock.Content += "\n" + trimmedLine
+			} else { 
+				// This is the first line of an unconditional body text.
+				block := TextBlock{Content: trimmedLine}
+				currentKnot.Body = append(currentKnot.Body, block)
+				// Point to the actual copy in the slice
+				currentTextBlock = &currentKnot.Body[len(currentKnot.Body)-1]
 			}
 		}
 	}
@@ -127,7 +126,7 @@ func parse(scriptContent string) (*Script, error) {
 		return nil, fmt.Errorf("scanner error: %w", err)
 	}
 
-	// Clean up content whitespace
+	// Final cleanup of content whitespace
 	for _, knot := range script.Knots {
 		for i := range knot.Body {
 			knot.Body[i].Content = strings.TrimSpace(knot.Body[i].Content)
@@ -137,11 +136,36 @@ func parse(scriptContent string) (*Script, error) {
 	return script, nil
 }
 
+// parseChoice correctly parses a choice line by handling target, state changes, and conditions.
 func parseChoice(line string) (*Choice, error) {
 	c := &Choice{}
 	remainder := strings.TrimSpace(line[1:])
 
-	// Extract condition
+	// --- Logic Correction: Parse from right to left to avoid clobbering ---
+
+	// 1. Extract Target (->) first
+	if parts := strings.SplitN(remainder, "->", 2); len(parts) > 1 {
+		remainder = strings.TrimSpace(parts[0])
+		target := strings.TrimSpace(parts[1])
+		if strings.HasPrefix(target, ".") {
+			c.Stitch = target
+		} else {
+			c.TargetKnot = target
+		}
+	}
+
+	// 2. Extract State Changes (~) from the remaining string
+	if parts := strings.Split(remainder, "~"); len(parts) > 1 {
+		remainder = strings.TrimSpace(parts[0])
+		for _, change := range parts[1:] {
+			trimmedChange := strings.TrimSpace(change)
+			if trimmedChange != "" {
+				c.StateChanges = append(c.StateChanges, trimmedChange)
+			}
+		}
+	}
+
+	// 3. Extract Condition ({}) from the remaining string
 	if start := strings.Index(remainder, "{"); start != -1 {
 		end := strings.Index(remainder, "}")
 		if end == -1 || end < start {
@@ -151,26 +175,8 @@ func parseChoice(line string) (*Choice, error) {
 		remainder = remainder[:start] + remainder[end+1:]
 	}
 
-	// Extract state changes
-	if parts := strings.Split(remainder, "~"); len(parts) > 1 {
-		remainder = strings.TrimSpace(parts[0])
-		for _, change := range parts[1:] {
-			c.StateChanges = append(c.StateChanges, strings.TrimSpace(change))
-		}
-	}
-	
-	// Extract target
-	if parts := strings.Split(remainder, "->"); len(parts) > 1 {
-		c.Text = strings.TrimSpace(parts[0])
-		target := strings.TrimSpace(parts[1])
-		if strings.HasPrefix(target, ".") {
-			c.Stitch = target
-		} else {
-			c.TargetKnot = target
-		}
-	} else {
-		c.Text = strings.TrimSpace(remainder)
-	}
+	// 4. Whatever is left is the choice text
+	c.Text = strings.TrimSpace(remainder)
 
 	if c.Text == "" && c.TargetKnot == "" && len(c.StateChanges) == 0 {
 		return nil, fmt.Errorf("choice appears to be empty")
@@ -179,11 +185,11 @@ func parseChoice(line string) (*Choice, error) {
 	return c, nil
 }
 
+// parseTextBlock parses a conditional text block line.
 func parseTextBlock(line string) (*TextBlock, error) {
 	b := &TextBlock{}
 	remainder := strings.TrimSpace(line[1:])
 	
-	// Extract condition
 	if start := strings.Index(remainder, "{"); start != -1 {
 		end := strings.Index(remainder, "}")
 		if end == -1 || end < start {
