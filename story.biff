@@ -1,27 +1,68 @@
-// title: The Test Chamber
-// author: Gemini
-// STATES: has_key, power_on
-// FLAG-STATES: puzzle_solved
+// title: The Enchanted Garden
+// author: ChatGPT
+// description: A more intricate branch through hidden rooms and forgotten lore
+// STATES: met_gnome, has_water, has_seed
+// FLAG-STATES: unlocked_gate, puzzle_solved
+// LOCAL-STATES: talked_to_gnome
 
 === index ===
-// scene: antechamber
-You are in a small, square room made of stone. A single, heavy iron door is to the north.
-There is a lever on the wall.
+// scene: garden/entrance
+- {unlocked_gate == false}
+  A wrought-iron gate stands closed before you, its bars twisted into leafy vines. To the left, a mossy path leads toward a marble fountain.
 
-- {power_on == true} The room is brightly lit by a bulb overhead.
-- The room is dim.
+- {unlocked_gate == true}
+  The gate yawns open on rusty hinges. Beyond, the garden’s secrets lie bathed in dappled sunlight.
 
-* {power_on == false} Pull the lever. ~ power_on = true
-* {has_key == true} Use the key on the door. -> victory
-* {has_key == false} Examine the room. -> look_around
+* {unlocked_gate == false && met_gnome == false} Venture to the fountain. -> fountain
+* {unlocked_gate == false && puzzle_solved == true} Plead with the gnome to open the gate. ~ unlocked_gate = true -> index
+* {unlocked_gate == true} Step through the gate. -> secret_garden
 
-=== look_around ===
-// scene: antechamber
-You look around the room and find a small, rusty key on the floor in a corner.
-* Take the key. ~ has_key = true -> index
+=== fountain ===
+// scene: garden/fountain
+- {talked_to_gnome == false}
+  Water trickles from the fountain’s lion-headed spout into a basin carved with runes.
 
-=== victory ===
-// scene: exit
-The key turns, the lock clicks, and the heavy door swings open. You've escaped!
+- {talked_to_gnome == true}
+  The gnome you awakened watches you with a knowing smile as water ripples around him.
+
+- 
+  (There’s nothing else of note here.)
+
+* {talked_to_gnome == false} Inspect the fountain. -> .gnome_intro
+* {talked_to_gnome == true && has_water == false} Drink from the fountain. ~ has_water = true -> fountain
+* Return to the gate. -> index
+
+=== gnome_intro ===
+// scene: garden/fountain
+A gruff little gnome emerges from behind the fountain. He eyes you keenly.
+
+- {talked_to_gnome == false}
+  He clears his throat. “Traveler, take this seed. Plant it by the oak, and truth shall bloom.”
+
+* Talk to the gnome. ~ talked_to_gnome = true -> gnome_offer
+
+=== gnome_offer ===
+// scene: garden/fountain
+- {talked_to_gnome == true}
+  The gnome produces a glimmering seed and tucks it into your palm.
+
+* Accept the seed and thank him. ~ has_seed = true ~ puzzle_solved = true -> fountain
+
+=== secret_garden ===
+// scene: garden/secret
+You enter a hidden grove where flowers glow softly in the shade.
+
+- {has_water == true}
+  The water you drank earlier still tingles with magic, and the blossoms lean toward you.
+
+- 
+  The petals are still, waiting.
+
+* Gather luminous petals. ~ puzzle_solved = true -> petal_gathered
+* Return to the gate. -> index
+
+=== petal_gathered ===
+// scene: garden/secret
+You cradle the petals—they pulse with life in your hand. You feel the garden’s heartbeat anew.
+
 END
-

@@ -27,7 +27,6 @@ func buildGraph(ast *Script) (*StoryGraph, error) {
 		initialState[state] = false
 	}
 
-	// Create the root node of the graph (index knot, all states false)
 	rootNode, err := createNode("index", ast.Knots["index"], initialState)
 	if err != nil {
 		return nil, err
@@ -38,29 +37,35 @@ func buildGraph(ast *Script) (*StoryGraph, error) {
 	queue = append(queue, rootNode)
 	visited[nodeID] = true
 
-	// Breadth-First Search (BFS) to discover all reachable nodes
 	for len(queue) > 0 {
 		currentNode := queue[0]
 		queue = queue[1:]
 
 		currentKnot := ast.Knots[currentNode.KnotName]
 
-		// Process each available choice from the current node
 		for _, choice := range currentKnot.Choices {
-			// Check if the choice's condition is met by the current state
 			if choice.Condition != "" && !evaluateCondition(choice.Condition, currentNode.State) {
 				continue
 			}
 
-			// This choice is available. Calculate the next state.
 			nextState := applyStateChanges(currentNode.State, choice, ast)
 
-			// Determine the target knot and create the next node
-			targetKnotName := choice.TargetKnot
-			if targetKnotName == "" && len(choice.StateChanges) > 0 {
-				targetKnotName = currentNode.KnotName // Self-link on state change
-			} else if targetKnotName == "" {
-				continue // Skip choices without target and without state change
+			var targetKnotName string
+			if choice.Stitch != "" {
+				// Stitches are local jumps, so the "knot" doesn't change, but we need a new node for the stitch content.
+				// This is a simplification for the POC; a full implementation might handle this differently.
+				// For now, we treat a stitch as a choice leading to a new "knot" with the stitch name.
+				targetKnotName = strings.TrimPrefix(choice.Stitch, ".")
+			} else {
+				targetKnotName = choice.TargetKnot
+			}
+
+			if targetKnotName == "" {
+				if len(choice.StateChanges) > 0 {
+					targetKnotName = currentNode.KnotName
+				} else {
+					continue
+				}
 			}
 			
 			targetKnot, exists := ast.Knots[targetKnotName]
@@ -68,25 +73,21 @@ func buildGraph(ast *Script) (*StoryGraph, error) {
 				return nil, fmt.Errorf("choice leads to non-existent knot: '%s'", targetKnotName)
 			}
 			
-			// If moving to a new scene, purge local states
 			if currentKnot.Scene != targetKnot.Scene {
 				for state := range ast.LocalStates {
 					nextState[state] = false
 				}
 			}
 
-			// Create the target node and its ID
 			nextNode, err := createNode(targetKnotName, targetKnot, nextState)
 			if err != nil {
 				return nil, err
 			}
 			nextNodeID := generateNodeID(nextNode.KnotName, nextNode.State)
 			
-			// Add an edge from the current node to the target node
 			edge := &StoryEdge{Text: choice.Text, TargetNodeID: nextNodeID, Stitch: choice.Stitch}
 			currentNode.Edges = append(currentNode.Edges, edge)
 			
-			// If we haven't visited this node before, add it to the graph and the queue
 			if !visited[nextNodeID] {
 				visited[nextNodeID] = true
 				graph.Graph[nextNodeID] = nextNode
@@ -106,11 +107,10 @@ func createNode(knotName string, knot *Knot, state map[string]bool) (*StoryNode,
 		IsEnd:    knot.IsEnd,
 		Edges:    []*StoryEdge{},
 	}
-	// Determine the body content based on conditions
 	for _, block := range knot.Body {
 		if block.Condition == "" || evaluateCondition(block.Condition, state) {
 			node.Content = block.Content
-			break // First match wins
+			break
 		}
 	}
 	return node, nil
@@ -122,7 +122,7 @@ func generateNodeID(knotName string, state map[string]bool) string {
 	for k := range state {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys) // Sort the keys to ensure deterministic order
+	sort.Strings(keys)
 
 	var stateParts []string
 	for _, k := range keys {
@@ -148,7 +148,7 @@ func evaluateCondition(condition string, state map[string]bool) bool {
 			vals := strings.Split(part, "==")
 			stateName, valueStr = strings.TrimSpace(vals[0]), strings.TrimSpace(vals[1])
 		} else {
-			return false // Invalid condition format
+			return false
 		}
 
 		expectedValue := valueStr == "true"
@@ -161,7 +161,7 @@ func evaluateCondition(condition string, state map[string]bool) bool {
 			result = actualValue != expectedValue
 		}
 		if !result {
-			return false // Early exit if any part of an AND condition is false
+			return false
 		}
 	}
 	return true
@@ -179,9 +179,8 @@ func applyStateChanges(currentState map[string]bool, choice Choice, ast *Script)
 		stateName := strings.TrimSpace(parts[0])
 		newValue := strings.TrimSpace(parts[1]) == "true"
 
-		// Enforce FLAG-STATE rule: can't be set to false
 		if isFlag, ok := ast.GlobalStates[stateName]; ok && isFlag && !newValue {
-			continue // Silently ignore attempt to set flag to false
+			continue
 		}
 
 		nextState[stateName] = newValue
